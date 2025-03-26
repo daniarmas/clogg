@@ -21,5 +21,22 @@
 go.work
 go.work.sum
 
+# Vscode folder
+.vscode
+
+# Exclude files starting with __debug_bin
+__debug_bin*
+
+# Debug bin 
+__debug_bin*
+
 # env file
 .env
+.envrc
+
+# test file
+cmd/test_file.go
+
+# Test coverage files
+coverage.html
+coverage.out
