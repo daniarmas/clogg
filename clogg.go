@@ -4,7 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"sync"
 	"time"
+)
+
+var (
+	globalLogger *Logger
+	once         = &sync.Once{} // Ensure the logger is initialized only once
 )
 
 // log represents a single log message with its associated metadata.
@@ -33,45 +40,39 @@ type Logger struct {
 	done chan struct{}
 }
 
+// LoggerConfig defines the configuration for the Logger.
+//
+// Fields:
+// - BufferSize: The size of the buffered channel used to enqueue log messages for asynchronous processing.
+// - Handler: The slog.Handler used to format and output log messages.
 type LoggerConfig struct {
-    BufferSize int
-    Handler    slog.Handler
+	BufferSize int
+	Handler    slog.Handler
 }
 
-// New creates a new asynchronous Logger instance with the specified buffer size.
-//
-// Parameters:
-// - bufferSize: The size of the buffered channel used to enqueue log messages for asynchronous processing.
-//
-// Behavior:
-//   - The function initializes a new Logger with a buffered channel (`logChan`) to hold log messages,
-//     an underlying `slog.Logger` for formatting and outputting logs, and a `done` channel to signal
-//     when the log processing goroutine has finished.
-//   - It starts a background goroutine (`processLogs`) to process log messages asynchronously.
-func New(config LoggerConfig) *Logger {
-	slogger := slog.New(config.Handler)
+// GetLogger returns the singleton instance of the Logger.
+// If the logger has not been initialized, it initializes it with the provided configuration.
+func GetLogger(config LoggerConfig) *Logger {
+	once.Do(func() {
+		if config.BufferSize == 0 || config.Handler == nil {
+			// Provide default configuration if none is provided
+			config = LoggerConfig{
+				BufferSize: 100,
+				Handler:    slog.NewJSONHandler(os.Stdout, nil),
+			}
+		}
+		slogger := slog.New(config.Handler)
 
-	clogger := &Logger{
-		logChan: make(chan log, config.BufferSize),
-		logger:  slogger,
-		done:    make(chan struct{}),
-	}
+		clogger := &Logger{
+			logChan: make(chan log, config.BufferSize),
+			logger:  slogger,
+			done:    make(chan struct{}),
+		}
 
-	go clogger.processLogs()
-	return clogger
-}
-
-// processLogs is a goroutine that continuously processes log messages from the logChan channel.
-// It reads messages from the channel, formats them using the underlying slog.Logger, and outputs them.
-// When the logChan channel is closed, it processes any remaining messages and then closes the done channel
-// to signal that the logging process has completed.
-func (l *Logger) processLogs() {
-	// Signal that the log processing is complete by closing the done channel.
-	defer close(l.done)
-	for msg := range l.logChan {
-		// Process each log message and output it using the slog.Logger.
-		l.logger.LogAttrs(context.Background(), msg.Level, msg.Msg, msg.Attrs...)
-	}
+		go clogger.processLogs()
+		globalLogger = clogger
+	})
+	return globalLogger
 }
 
 // Shutdown gracefully shuts down the logger by ensuring that all pending log messages
@@ -86,8 +87,47 @@ func (l *Logger) processLogs() {
 // This ensures that no log messages are lost during shutdown and that the logger
 // shuts down cleanly.
 func (l *Logger) Shutdown() {
-	close(l.logChan)
-	<-l.done // wait until log processor finishes
+	if globalLogger == nil {
+		close(l.logChan)
+		<-l.done // wait until log processor finishes
+	}
+}
+
+func Debug(ctx context.Context, msg string, attrs ...slog.Attr) {
+	if globalLogger != nil {
+		globalLogger.debug(ctx, msg, attrs...)
+	}
+}
+
+func Info(ctx context.Context, msg string, attrs ...slog.Attr) {
+	if globalLogger != nil {
+		globalLogger.info(ctx, msg, attrs...)
+	}
+}
+
+func Warn(ctx context.Context, msg string, attrs ...slog.Attr) {
+	if globalLogger != nil {
+		globalLogger.warn(ctx, msg, attrs...)
+	}
+}
+
+func Error(ctx context.Context, msg string, attrs ...slog.Attr) {
+	if globalLogger != nil {
+		globalLogger.error(ctx, msg, attrs...)
+	}
+}
+
+// processLogs is a goroutine that continuously processes log messages from the logChan channel.
+// It reads messages from the channel, formats them using the underlying slog.Logger, and outputs them.
+// When the logChan channel is closed, it processes any remaining messages and then closes the done channel
+// to signal that the logging process has completed.
+func (l *Logger) processLogs() {
+	// Signal that the log processing is complete by closing the done channel.
+	defer close(l.done)
+	for msg := range l.logChan {
+		// Process each log message and output it using the slog.Logger.
+		l.logger.LogAttrs(context.Background(), msg.Level, msg.Msg, msg.Attrs...)
+	}
 }
 
 // log is a method that enqueues a log message with the specified level, message, and attributes.
@@ -119,21 +159,21 @@ func (l *Logger) logWithLevel(ctx context.Context, level slog.Level, msg string,
 }
 
 // Debug logs a debug message
-func (l *Logger) Debug(ctx context.Context, msg string, attrs ...slog.Attr) {
+func (l *Logger) debug(ctx context.Context, msg string, attrs ...slog.Attr) {
 	l.logWithLevel(ctx, slog.LevelDebug, msg, attrs...)
 }
 
 // Info logs an info message
-func (l *Logger) Info(ctx context.Context, msg string, attrs ...slog.Attr) {
+func (l *Logger) info(ctx context.Context, msg string, attrs ...slog.Attr) {
 	l.logWithLevel(ctx, slog.LevelInfo, msg, attrs...)
 }
 
 // Warn logs a warning message
-func (l *Logger) Warn(ctx context.Context, msg string, attrs ...slog.Attr) {
+func (l *Logger) warn(ctx context.Context, msg string, attrs ...slog.Attr) {
 	l.logWithLevel(ctx, slog.LevelWarn, msg, attrs...)
 }
 
 // Error logs an error message
-func (l *Logger) Error(ctx context.Context, msg string, attrs ...slog.Attr) {
+func (l *Logger) error(ctx context.Context, msg string, attrs ...slog.Attr) {
 	l.logWithLevel(ctx, slog.LevelError, msg, attrs...)
 }
