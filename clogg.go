@@ -93,25 +93,25 @@ func (l *Logger) Shutdown() {
 	}
 }
 
-func Debug(ctx context.Context, msg string, attrs ...slog.Attr) {
+func Debug(ctx context.Context, msg string, attrs ...Attr) {
 	if globalLogger != nil {
 		globalLogger.debug(ctx, msg, attrs...)
 	}
 }
 
-func Info(ctx context.Context, msg string, attrs ...slog.Attr) {
+func Info(ctx context.Context, msg string, attrs ...Attr) {
 	if globalLogger != nil {
 		globalLogger.info(ctx, msg, attrs...)
 	}
 }
 
-func Warn(ctx context.Context, msg string, attrs ...slog.Attr) {
+func Warn(ctx context.Context, msg string, attrs ...Attr) {
 	if globalLogger != nil {
 		globalLogger.warn(ctx, msg, attrs...)
 	}
 }
 
-func Error(ctx context.Context, msg string, attrs ...slog.Attr) {
+func Error(ctx context.Context, msg string, attrs ...Attr) {
 	if globalLogger != nil {
 		globalLogger.error(ctx, msg, attrs...)
 	}
@@ -176,4 +176,32 @@ func (l *Logger) warn(ctx context.Context, msg string, attrs ...slog.Attr) {
 // Error logs an error message
 func (l *Logger) error(ctx context.Context, msg string, attrs ...slog.Attr) {
 	l.logWithLevel(ctx, slog.LevelError, msg, attrs...)
+}
+
+// Attr is an alias for slog.Attr, used to define structured attributes for log messages.
+type Attr = slog.Attr
+
+// String creates a new Attr with a string value.
+func String(key, value string) Attr {
+	return slog.String(key, value)
+}
+
+// Int creates a new Attr with an integer value.
+func Int(key string, value int) Attr {
+	return slog.Int(key, value)
+}
+
+// Bool creates a new Attr with a boolean value.
+func Bool(key string, value bool) Attr {
+	return slog.Bool(key, value)
+}
+
+// Float64 creates a new Attr with a float64 value.
+func Float64(key string, value float64) Attr {
+	return slog.Float64(key, value)
+}
+
+// Time creates a new Attr with a time.Time value.
+func Time(key string, value time.Time) Attr {
+	return slog.Time(key, value)
 }
