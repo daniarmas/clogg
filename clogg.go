@@ -2,8 +2,10 @@ package clogg
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
+	"time"
 )
 
 // log represents a single log message with its associated metadata.
@@ -61,12 +63,12 @@ func New(bufferSize int) *Logger {
 // When the logChan channel is closed, it processes any remaining messages and then closes the done channel
 // to signal that the logging process has completed.
 func (l *Logger) processLogs() {
+	// Signal that the log processing is complete by closing the done channel.
+	defer close(l.done)
 	for msg := range l.logChan {
 		// Process each log message and output it using the slog.Logger.
 		l.logger.LogAttrs(context.Background(), msg.Level, msg.Msg, msg.Attrs...)
 	}
-	// Signal that the log processing is complete by closing the done channel.
-	close(l.done)
 }
 
 // Shutdown gracefully shuts down the logger by ensuring that all pending log messages
@@ -85,42 +87,50 @@ func (l *Logger) Shutdown() {
 	<-l.done // wait until log processor finishes
 }
 
+// log is a method that enqueues a log message with the specified level, message, and attributes.
+func (l *Logger) log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) error {
+	const maxRetries = 3
+	for i := 0; i < maxRetries; i++ {
+		select {
+		case l.logChan <- log{Level: level, Msg: msg, Attrs: attrs}:
+			// Enqueued successfully
+			return nil
+		default:
+			// Log a warning on retry
+			l.logger.LogAttrs(ctx, slog.LevelWarn, "retrying log message due to full buffer", slog.Int("attempt", i+1))
+			time.Sleep(10 * time.Millisecond) // Fixed delay between retries
+		}
+	}
+
+	// If retries are exhausted, return an error
+	return fmt.Errorf("logging buffer channel full")
+}
+
+// logWithLevel is a helper method to log messages at a specific level.
+func (l *Logger) logWithLevel(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
+	err := l.log(ctx, level, msg, attrs...)
+	if err != nil {
+		// Log an error if the message could not be enqueued
+		l.logger.LogAttrs(ctx, slog.LevelError, "failed to log", slog.String("error", err.Error()))
+	}
+}
+
 // Debug logs a debug message
 func (l *Logger) Debug(ctx context.Context, msg string, attrs ...slog.Attr) {
-	select {
-	case l.logChan <- log{Level: slog.LevelDebug, Msg: msg, Attrs: attrs}:
-		// enqueued successfully
-	default:
-		// Optional: drop or handle full buffer
-	}
+	l.logWithLevel(ctx, slog.LevelDebug, msg, attrs...)
 }
 
 // Info logs an info message
 func (l *Logger) Info(ctx context.Context, msg string, attrs ...slog.Attr) {
-	select {
-	case l.logChan <- log{Level: slog.LevelInfo, Msg: msg, Attrs: attrs}:
-		// enqueued successfully
-	default:
-		// Optional: drop or handle full buffer
-	}
+	l.logWithLevel(ctx, slog.LevelInfo, msg, attrs...)
 }
 
 // Warn logs a warning message
 func (l *Logger) Warn(ctx context.Context, msg string, attrs ...slog.Attr) {
-	select {
-	case l.logChan <- log{Level: slog.LevelWarn, Msg: msg, Attrs: attrs}:
-		// enqueued successfully
-	default:
-		// Optional: drop or handle full buffer
-	}
+	l.logWithLevel(ctx, slog.LevelWarn, msg, attrs...)
 }
 
 // Error logs an error message
 func (l *Logger) Error(ctx context.Context, msg string, attrs ...slog.Attr) {
-	select {
-	case l.logChan <- log{Level: slog.LevelError, Msg: msg, Attrs: attrs}:
-		// enqueued successfully
-	default:
-		// Optional: drop or handle full buffer
-	}
+	l.logWithLevel(ctx, slog.LevelError, msg, attrs...)
 }
