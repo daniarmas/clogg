@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 )
 
@@ -34,6 +33,11 @@ type Logger struct {
 	done chan struct{}
 }
 
+type LoggerConfig struct {
+    BufferSize int
+    Handler    slog.Handler
+}
+
 // New creates a new asynchronous Logger instance with the specified buffer size.
 //
 // Parameters:
@@ -44,12 +48,11 @@ type Logger struct {
 //     an underlying `slog.Logger` for formatting and outputting logs, and a `done` channel to signal
 //     when the log processing goroutine has finished.
 //   - It starts a background goroutine (`processLogs`) to process log messages asynchronously.
-func New(bufferSize int) *Logger {
-	handler := slog.NewJSONHandler(os.Stdout, nil)
-	slogger := slog.New(handler)
+func New(config LoggerConfig) *Logger {
+	slogger := slog.New(config.Handler)
 
 	clogger := &Logger{
-		logChan: make(chan log, bufferSize),
+		logChan: make(chan log, config.BufferSize),
 		logger:  slogger,
 		done:    make(chan struct{}),
 	}
