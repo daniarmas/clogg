@@ -91,7 +91,7 @@ func (l *Logger) Shutdown() {
 }
 
 // log is a method that enqueues a log message with the specified level, message, and attributes.
-func (l *Logger) log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) error {
+func (l *Logger) logMsg(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) error {
 	const maxRetries = 3
 	for i := 0; i < maxRetries; i++ {
 		select {
@@ -111,7 +111,7 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, attrs ..
 
 // logWithLevel is a helper method to log messages at a specific level.
 func (l *Logger) logWithLevel(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
-	err := l.log(ctx, level, msg, attrs...)
+	err := l.logMsg(ctx, level, msg, attrs...)
 	if err != nil {
 		// Log an error if the message could not be enqueued
 		l.logger.LogAttrs(ctx, slog.LevelError, "failed to log", slog.String("error", err.Error()))
