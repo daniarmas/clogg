@@ -87,7 +87,7 @@ func GetLogger(config LoggerConfig) *Logger {
 // This ensures that no log messages are lost during shutdown and that the logger
 // shuts down cleanly.
 func (l *Logger) Shutdown() {
-	if globalLogger == nil {
+	if globalLogger != nil {
 		close(l.logChan)
 		<-l.done // wait until log processor finishes
 	}
